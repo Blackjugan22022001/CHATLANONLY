@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aplikasi Chat Real-time dengan Supabase</title>
+    <title>ILHAMCHAT 1.0</title>
     <style>
         * {
             margin: 0;
@@ -389,26 +389,14 @@
             transform: translateY(-2px);
         }
         
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background-color: #e0e0e0;
-            border-radius: 3px;
-            margin-top: 8px;
-            overflow: hidden;
-        }
-        
-        .progress {
-            height: 100%;
-            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
-            width: 0%;
-            transition: width 0.3s;
-        }
-        
-        .upload-status {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 5px;
+        .error-message {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            display: none;
         }
         
         @media (max-width: 768px) {
@@ -439,8 +427,12 @@
     <div class="login-modal" id="login-modal">
         <div class="login-content">
             <h2>Masuk ke Chat</h2>
+            <div class="error-message" id="login-error"></div>
             <input type="text" id="username-input" class="login-input" placeholder="Masukkan nama Anda" maxlength="20">
             <button class="login-btn" id="login-btn">Masuk</button>
+            <div style="margin-top: 15px; font-size: 0.9rem; color: #666;">
+                <p>Gunakan nama apa saja untuk mulai chat</p>
+            </div>
         </div>
     </div>
 
@@ -448,12 +440,12 @@
         <header>
             <h1>
                 <i class="fas fa-comments"></i>
-                Aplikasi Chat Real-time
+                ILHAMCHAT 1.0
             </h1>
             <div style="display: flex; align-items: center; gap: 15px;">
                 <div class="connection-status">
                     <div class="status-dot" id="status-dot"></div>
-                    <span id="status-text">Terhubung</span>
+                    <span id="status-text">Menyambungkan...</span>
                 </div>
                 <div class="user-info">
                     <div class="user-color" id="user-color"></div>
@@ -476,9 +468,6 @@
                     <div class="action-buttons">
                         <button class="action-btn" id="file-btn" title="Lampirkan File" disabled>
                             <i class="fas fa-paperclip"></i>
-                        </button>
-                        <button class="action-btn" id="image-btn" title="Unggah Gambar" disabled>
-                            <i class="fas fa-image"></i>
                         </button>
                         <button class="action-btn" id="send-button" title="Kirim Pesan" disabled>
                             <i class="fas fa-paper-plane"></i>
@@ -532,19 +521,29 @@
     </div>
 
     <script>
-        // Konfigurasi Supabase
+        // Konfigurasi Supabase - GANTI DENGAN KONFIGURASI ANDA
         const SUPABASE_URL = 'https://dmesetbxhugyoyszpzzeu.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtZXN0YnhodWd5b3lzenB6emV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1NDQ5NzYsImV4cCI6MjA3OTEyMDk3Nn0.lbrW9Q9VsHabPqEmUjJKXJoBCOYwnjv47v1LRPzX91c';
 
-        // Inisialisasi Supabase
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Inisialisasi Supabase dengan konfigurasi tambahan
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                autoRefreshToken: true,
+                persistSession: true,
+                detectSessionInUrl: false
+            },
+            realtime: {
+                params: {
+                    eventsPerSecond: 10
+                }
+            }
+        });
 
         // Inisialisasi variabel
         const chatContainer = document.getElementById('chat-container');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
         const fileBtn = document.getElementById('file-btn');
-        const imageBtn = document.getElementById('image-btn');
         const fileInput = document.getElementById('file-input');
         const fileUploadArea = document.getElementById('file-upload-area');
         const emptyState = document.getElementById('empty-state');
@@ -558,12 +557,24 @@
         const usernameInput = document.getElementById('username-input');
         const loginBtn = document.getElementById('login-btn');
         const usersList = document.getElementById('users-list');
+        const loginError = document.getElementById('login-error');
 
         let userId = '';
         let username = '';
         let userColor = '';
         let isConnected = false;
         let onlineUsers = new Map();
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        // Fungsi untuk menampilkan error
+        function showError(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            setTimeout(() => {
+                element.style.display = 'none';
+            }, 5000);
+        }
 
         // Fungsi untuk generate warna unik
         function getUserColor(userId) {
@@ -575,10 +586,35 @@
             return `hsl(${hue}, 70%, 60%)`;
         }
 
+        // Fungsi untuk test koneksi Supabase
+        async function testSupabaseConnection() {
+            try {
+                const { data, error } = await supabase
+                    .from('messages')
+                    .select('count')
+                    .limit(1);
+                
+                return !error;
+            } catch (error) {
+                console.error('Connection test failed:', error);
+                return false;
+            }
+        }
+
         // Fungsi login
         loginBtn.addEventListener('click', async function() {
             const name = usernameInput.value.trim();
             if (name) {
+                // Test koneksi dulu
+                statusText.textContent = 'Menguji koneksi...';
+                
+                const isConnected = await testSupabaseConnection();
+                if (!isConnected) {
+                    showError(loginError, 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.');
+                    statusText.textContent = 'Gagal terhubung';
+                    return;
+                }
+
                 username = name;
                 userId = 'user_' + Math.random().toString(36).substr(2, 9);
                 userColor = getUserColor(userId);
@@ -589,6 +625,8 @@
                 loginModal.style.display = 'none';
                 enableChat();
                 await connectToSupabase();
+            } else {
+                showError(loginError, 'Silakan masukkan nama Anda');
             }
         });
 
@@ -597,16 +635,17 @@
             messageInput.disabled = false;
             sendButton.disabled = false;
             fileBtn.disabled = false;
-            imageBtn.disabled = false;
             fileInput.disabled = false;
             messageInput.focus();
         }
 
-        // Fungsi untuk terhubung ke Supabase
+        // Fungsi untuk terhubung ke Supabase dengan retry mechanism
         async function connectToSupabase() {
             try {
+                statusText.textContent = 'Menyambungkan...';
+                
                 // Set status online
-                await supabase
+                const { error: onlineError } = await supabase
                     .from('online_users')
                     .upsert({
                         id: userId,
@@ -616,12 +655,16 @@
                         is_online: true
                     });
 
+                if (onlineError) {
+                    console.warn('Cannot update online status:', onlineError);
+                }
+
                 // Load pesan yang sudah ada
                 await loadMessages();
 
                 // Subscribe untuk pesan baru
                 const subscription = supabase
-                    .channel('messages')
+                    .channel('public:messages')
                     .on('postgres_changes', 
                         { 
                             event: 'INSERT', 
@@ -637,40 +680,38 @@
                             }
                         }
                     )
-                    .subscribe();
-
-                // Subscribe untuk update pengguna online
-                const onlineSubscription = supabase
-                    .channel('online_users')
-                    .on('postgres_changes',
-                        {
-                            event: '*',
-                            schema: 'public',
-                            table: 'online_users'
-                        },
-                        async (payload) => {
-                            await updateOnlineUsers();
+                    .subscribe((status) => {
+                        if (status === 'SUBSCRIBED') {
+                            console.log('Realtime connected');
+                            isConnected = true;
+                            statusDot.classList.remove('offline');
+                            statusText.textContent = 'Terhubung';
+                            retryCount = 0;
                         }
-                    )
-                    .subscribe();
-
-                // Update status koneksi
-                isConnected = true;
-                statusDot.classList.remove('offline');
-                statusText.textContent = 'Terhubung';
+                    });
 
                 // Update online users
                 await updateOnlineUsers();
 
                 // Update online users setiap 30 detik
                 setInterval(async () => {
-                    await updateOnlineUsers();
+                    if (isConnected) {
+                        await updateOnlineUsers();
+                    }
                 }, 30000);
 
             } catch (error) {
                 console.error('Error connecting to Supabase:', error);
                 statusDot.classList.add('offline');
-                statusText.textContent = 'Offline';
+                statusText.textContent = 'Gagal terhubung';
+                
+                // Retry logic
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    setTimeout(() => {
+                        connectToSupabase();
+                    }, 2000 * retryCount);
+                }
             }
         }
 
@@ -681,7 +722,7 @@
                     .from('online_users')
                     .select('*')
                     .eq('is_online', true)
-                    .gt('last_seen', new Date(Date.now() - 2 * 60 * 1000).toISOString()); // 2 menit terakhir
+                    .gt('last_seen', new Date(Date.now() - 2 * 60 * 1000).toISOString());
 
                 if (error) throw error;
 
@@ -719,9 +760,14 @@
                     .order('created_at', { ascending: true })
                     .limit(100);
 
-                if (error) throw error;
+                if (error) {
+                    console.error('Error loading messages:', error);
+                    // Fallback: tampilkan pesan offline
+                    displayTextMessage('Tidak dapat memuat pesan sebelumnya', 'system', 'System', new Date().toISOString(), false);
+                    return;
+                }
 
-                if (messages.length > 0) {
+                if (messages && messages.length > 0) {
                     emptyState.style.display = 'none';
                     
                     messages.forEach(message => {
@@ -815,34 +861,30 @@
             const fileIcon = document.createElement('i');
             fileIcon.classList.add('file-icon');
             
-            if (message.file_type.startsWith('image/')) {
+            if (message.file_type && message.file_type.startsWith('image/')) {
                 fileIcon.classList.add('fas', 'fa-file-image');
-            } else if (message.file_type.startsWith('video/')) {
+            } else if (message.file_type && message.file_type.startsWith('video/')) {
                 fileIcon.classList.add('fas', 'fa-file-video');
-            } else if (message.file_type.startsWith('audio/')) {
+            } else if (message.file_type && message.file_type.startsWith('audio/')) {
                 fileIcon.classList.add('fas', 'fa-file-audio');
-            } else if (message.file_type.includes('pdf')) {
+            } else if (message.file_type && message.file_type.includes('pdf')) {
                 fileIcon.classList.add('fas', 'fa-file-pdf');
-            } else if (message.file_type.includes('word') || message.file_type.includes('document')) {
-                fileIcon.classList.add('fas', 'fa-file-word');
-            } else if (message.file_type.includes('excel') || message.file_type.includes('spreadsheet')) {
-                fileIcon.classList.add('fas', 'fa-file-excel');
             } else {
                 fileIcon.classList.add('fas', 'fa-file');
             }
             
             const fileNameSpan = document.createElement('span');
-            fileNameSpan.textContent = message.file_name;
+            fileNameSpan.textContent = message.file_name || 'File';
             
             fileInfoDiv.appendChild(fileIcon);
             fileInfoDiv.appendChild(fileNameSpan);
             fileMessageDiv.appendChild(fileInfoDiv);
             
             // Tampilkan preview untuk gambar
-            if (message.file_type.startsWith('image/')) {
+            if (message.file_type && message.file_type.startsWith('image/') && message.file_data) {
                 const imgPreview = document.createElement('img');
                 imgPreview.classList.add('file-preview');
-                imgPreview.src = message.file_url || message.file_data;
+                imgPreview.src = message.file_data;
                 imgPreview.alt = message.file_name;
                 fileMessageDiv.appendChild(imgPreview);
             }
@@ -850,24 +892,14 @@
             const fileActionsDiv = document.createElement('div');
             fileActionsDiv.classList.add('file-actions');
             
-            const downloadBtn = document.createElement('button');
-            downloadBtn.classList.add('btn', 'btn-download');
-            downloadBtn.innerHTML = '<i class="fas fa-download"></i> Unduh';
-            downloadBtn.onclick = function() {
-                downloadFile(message.file_url || message.file_data, message.file_name, message.file_type);
-            };
-            
-            const printBtn = document.createElement('button');
-            printBtn.classList.add('btn', 'btn-print');
-            printBtn.innerHTML = '<i class="fas fa-print"></i> Cetak';
-            printBtn.onclick = function() {
-                printFile(message.file_url || message.file_data, message.file_type, message.file_name);
-            };
-            
-            fileActionsDiv.appendChild(downloadBtn);
-            
-            if (message.file_type.startsWith('image/') || message.file_type.includes('pdf') || message.file_type.includes('text/plain')) {
-                fileActionsDiv.appendChild(printBtn);
+            if (message.file_data) {
+                const downloadBtn = document.createElement('button');
+                downloadBtn.classList.add('btn', 'btn-download');
+                downloadBtn.innerHTML = '<i class="fas fa-download"></i> Unduh';
+                downloadBtn.onclick = function() {
+                    downloadFile(message.file_data, message.file_name, message.file_type);
+                };
+                fileActionsDiv.appendChild(downloadBtn);
             }
             
             fileMessageDiv.appendChild(fileActionsDiv);
@@ -891,32 +923,6 @@
             document.body.removeChild(link);
         }
 
-        // Fungsi untuk mencetak file
-        function printFile(fileData, fileType, fileName) {
-            if (fileType.startsWith('image/')) {
-                const printWindow = window.open('', '_blank');
-                printWindow.document.write(`
-                    <html>
-                    <head>
-                        <title>Cetak: ${fileName}</title>
-                    </head>
-                    <body style="display: flex; justify-content: center; align-items: center; height: 100vh;">
-                        <img src="${fileData}" style="max-width: 100%; max-height: 100%;">
-                    </body>
-                    </html>
-                `);
-                printWindow.document.close();
-                printWindow.print();
-            } else if (fileType.includes('pdf')) {
-                const printWindow = window.open(fileData, '_blank');
-                printWindow.onload = function() {
-                    printWindow.print();
-                };
-            } else {
-                alert('Tipe file ini tidak dapat dicetak langsung. Silakan unduh dan buka dengan aplikasi yang sesuai.');
-            }
-        }
-
         // Fungsi untuk memformat waktu
         function formatTime(timestamp) {
             const date = new Date(timestamp);
@@ -934,6 +940,9 @@
                 return;
             }
             
+            // Tampilkan pesan lokal dulu (optimistic update)
+            displayTextMessage(text, userId, username, new Date().toISOString(), true);
+            
             try {
                 const { error } = await supabase
                     .from('messages')
@@ -950,87 +959,53 @@
                 messageInput.value = '';
             } catch (error) {
                 console.error('Error sending message:', error);
-                alert('Error mengirim pesan: ' + error.message);
+                // Tampilkan pesan error
+                displayTextMessage(`⚠️ Gagal mengirim pesan: ${error.message}`, 'system', 'System', new Date().toISOString(), true);
             }
         }
 
-        // Fungsi untuk mengupload file ke Supabase Storage
-        async function uploadFile(file) {
-            try {
-                // Generate unique filename
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${userId}_${Date.now()}.${fileExt}`;
-                
-                // Upload file to storage
-                const { data, error } = await supabase.storage
-                    .from('chat-files')
-                    .upload(fileName, file);
-                
-                if (error) throw error;
-                
-                // Get public URL
-                const { data: { publicUrl } } = supabase.storage
-                    .from('chat-files')
-                    .getPublicUrl(fileName);
-                
-                return {
+        // Fungsi untuk mengirim file (menggunakan base64 untuk simplicity)
+        async function sendFileMessage(file) {
+            const reader = new FileReader();
+            
+            reader.onload = async function(e) {
+                // Tampilkan pesan file lokal dulu
+                const tempMessage = {
+                    type: 'file',
                     file_name: file.name,
                     file_type: file.type,
-                    file_url: publicUrl,
-                    storage_path: data.path
+                    file_data: e.target.result,
+                    user_id: userId,
+                    username: username,
+                    created_at: new Date().toISOString()
                 };
-            } catch (error) {
-                console.error('Error uploading file:', error);
-                throw error;
-            }
-        }
+                
+                displayFileMessage(tempMessage, true);
+                
+                try {
+                    // Simpan ke database
+                    const { error } = await supabase
+                        .from('messages')
+                        .insert({
+                            type: 'file',
+                            file_name: file.name,
+                            file_type: file.type,
+                            file_data: e.target.result,
+                            user_id: userId,
+                            username: username,
+                            created_at: new Date().toISOString()
+                        });
 
-        // Fungsi untuk mengirim file
-        async function sendFileMessage(file) {
-            try {
-                // Tampilkan status upload
-                const tempMessageDiv = document.createElement('div');
-                tempMessageDiv.classList.add('message', 'sent');
-                tempMessageDiv.innerHTML = `
-                    <div class="message-header">
-                        <span>Anda</span>
-                        <span>${formatTime(new Date())}</span>
-                    </div>
-                    <div>Mengupload ${file.name}...</div>
-                    <div class="progress-bar">
-                        <div class="progress" id="upload-progress"></div>
-                    </div>
-                    <div class="upload-status" id="upload-status">0%</div>
-                `;
-                chatContainer.appendChild(tempMessageDiv);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-                
-                // Upload file
-                const fileData = await uploadFile(file);
-                
-                // Simpan ke database
-                const { error } = await supabase
-                    .from('messages')
-                    .insert({
-                        type: 'file',
-                        file_name: fileData.file_name,
-                        file_type: fileData.file_type,
-                        file_url: fileData.file_url,
-                        storage_path: fileData.storage_path,
-                        user_id: userId,
-                        username: username,
-                        created_at: new Date().toISOString()
-                    });
-
-                if (error) throw error;
-                
-                // Hapus pesan sementara
-                tempMessageDiv.remove();
-                
-            } catch (error) {
-                console.error('Error sending file:', error);
-                alert('Error mengirim file: ' + error.message);
-            }
+                    if (error) throw error;
+                    
+                } catch (error) {
+                    console.error('Error sending file:', error);
+                    // Tampilkan pesan error
+                    displayTextMessage(`⚠️ Gagal mengirim file: ${error.message}`, 'system', 'System', new Date().toISOString(), true);
+                }
+            };
+            
+            reader.readAsDataURL(file);
         }
 
         // Event listener untuk tombol kirim
@@ -1045,12 +1020,6 @@
         
         // Event listener untuk tombol file
         fileBtn.addEventListener('click', function() {
-            fileInput.click();
-        });
-        
-        // Event listener untuk tombol gambar
-        imageBtn.addEventListener('click', function() {
-            fileInput.accept = 'image/*';
             fileInput.click();
         });
         
@@ -1070,7 +1039,6 @@
         
         // Event listener untuk area unggah file
         fileUploadArea.addEventListener('click', function() {
-            fileInput.accept = '*/*';
             fileInput.click();
         });
         
@@ -1195,32 +1163,29 @@
         // Cleanup saat window/tab ditutup
         window.addEventListener('beforeunload', async function() {
             if (userId) {
-                await supabase
-                    .from('online_users')
-                    .update({ is_online: false })
-                    .eq('id', userId);
+                try {
+                    await supabase
+                        .from('online_users')
+                        .update({ is_online: false })
+                        .eq('id', userId);
+                } catch (error) {
+                    console.error('Error updating online status:', error);
+                }
             }
         });
 
-        // Initialize Supabase storage bucket
-        async function initializeStorage() {
-            try {
-                // Cek apakah bucket sudah ada
-                const { data: buckets, error } = await supabase.storage.listBuckets();
-                if (error) throw error;
-                
-                const bucketExists = buckets.some(bucket => bucket.name === 'chat-files');
-                
-                if (!bucketExists) {
-                    console.log('Bucket chat-files tidak ditemukan. Silakan buat bucket di dashboard Supabase.');
-                }
-            } catch (error) {
-                console.error('Error initializing storage:', error);
+        // Test koneksi saat load
+        window.addEventListener('load', async function() {
+            const isConnected = await testSupabaseConnection();
+            if (isConnected) {
+                statusDot.classList.remove('offline');
+                statusText.textContent = 'Siap';
+            } else {
+                statusDot.classList.add('offline');
+                statusText.textContent = 'Offline';
+                showError(loginError, 'Tidak dapat terhubung ke server. Beberapa fitur mungkin tidak berfungsi.');
             }
-        }
-
-        // Panggil fungsi initialize saat load
-        initializeStorage();
+        });
     </script>
 </body>
 </html>
