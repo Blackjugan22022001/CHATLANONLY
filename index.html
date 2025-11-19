@@ -1,29 +1,1226 @@
--- Tabel untuk menyimpan pesan
-CREATE TABLE messages (
-    id BIGSERIAL PRIMARY KEY,
-    type TEXT NOT NULL CHECK (type IN ('text', 'file')),
-    text TEXT,
-    file_name TEXT,
-    file_type TEXT,
-    file_data TEXT,
-    user_id TEXT NOT NULL,
-    username TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Chat Real-time dengan Supabase</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+        }
+        
+        header {
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+        }
+        
+        .user-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #4CAF50;
+        }
+        
+        .status-dot.offline {
+            background-color: #f44336;
+        }
+        
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .chat-section {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #e4e6eb;
+        }
+        
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background-color: #f8f9fa;
+        }
+        
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            word-wrap: break-word;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .received {
+            align-self: flex-start;
+            background-color: white;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .sent {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+        
+        .file-message {
+            border: 1px dashed #ddd;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 5px;
+            background-color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .file-icon {
+            font-size: 1.5rem;
+        }
+        
+        .file-preview {
+            max-width: 200px;
+            max-height: 150px;
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+        
+        .file-actions {
+            margin-top: 8px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s;
+        }
+        
+        .btn-download {
+            background-color: #4facfe;
+            color: white;
+        }
+        
+        .btn-print {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+        
+        .input-container {
+            display: flex;
+            padding: 15px;
+            background-color: white;
+            border-top: 1px solid #e4e6eb;
+        }
+        
+        #message-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #e4e6eb;
+            border-radius: 20px;
+            outline: none;
+            font-size: 1rem;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-left: 10px;
+        }
+        
+        .action-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #4facfe;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .action-btn:hover {
+            background-color: #f0f2f5;
+        }
+        
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .tools-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            background-color: #f8f9fa;
+            overflow-y: auto;
+        }
+        
+        .section-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e4e6eb;
+        }
+        
+        .file-upload-area {
+            border: 2px dashed #4facfe;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .file-upload-area:hover {
+            background-color: rgba(79, 172, 254, 0.1);
+        }
+        
+        .file-upload-area i {
+            font-size: 2rem;
+            color: #4facfe;
+            margin-bottom: 10px;
+        }
+        
+        .online-users {
+            margin-top: 20px;
+        }
+        
+        .users-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .user-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: #e3f2fd;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+        }
+        
+        .print-section {
+            margin-top: 20px;
+        }
+        
+        .print-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .print-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: #65676b;
+            margin-top: 50px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .login-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .login-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+        
+        .login-input {
+            width: 100%;
+            padding: 12px;
+            margin: 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        
+        .login-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #e0e0e0;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .upload-status {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .chat-section {
+                border-right: none;
+                border-bottom: 1px solid #e4e6eb;
+            }
+            
+            .tools-section {
+                max-height: 300px;
+            }
+            
+            .message {
+                max-width: 85%;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="login-modal" id="login-modal">
+        <div class="login-content">
+            <h2>Masuk ke Chat</h2>
+            <input type="text" id="username-input" class="login-input" placeholder="Masukkan nama Anda" maxlength="20">
+            <button class="login-btn" id="login-btn">Masuk</button>
+        </div>
+    </div>
 
--- Tabel untuk melacak pengguna online
-CREATE TABLE online_users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL,
-    color TEXT NOT NULL,
-    last_seen TIMESTAMPTZ DEFAULT NOW(),
-    is_online BOOLEAN DEFAULT true
-);
+    <div class="container">
+        <header>
+            <h1>
+                <i class="fas fa-comments"></i>
+                Aplikasi Chat Real-time
+            </h1>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div class="connection-status">
+                    <div class="status-dot" id="status-dot"></div>
+                    <span id="status-text">Terhubung</span>
+                </div>
+                <div class="user-info">
+                    <div class="user-color" id="user-color"></div>
+                    <span id="user-id">Pengguna</span>
+                </div>
+            </div>
+        </header>
+        
+        <div class="main-content">
+            <div class="chat-section">
+                <div class="chat-container" id="chat-container">
+                    <div class="empty-state" id="empty-state">
+                        <i class="fas fa-comment-dots" style="font-size: 3rem; margin-bottom: 15px;"></i>
+                        <p>Belum ada pesan. Mulai percakapan dengan mengetik di bawah!</p>
+                    </div>
+                </div>
+                
+                <div class="input-container">
+                    <input type="text" id="message-input" placeholder="Ketik pesan Anda..." disabled>
+                    <div class="action-buttons">
+                        <button class="action-btn" id="file-btn" title="Lampirkan File" disabled>
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <button class="action-btn" id="image-btn" title="Unggah Gambar" disabled>
+                            <i class="fas fa-image"></i>
+                        </button>
+                        <button class="action-btn" id="send-button" title="Kirim Pesan" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tools-section">
+                <h2 class="section-title">
+                    <i class="fas fa-tools"></i>
+                    Alat Berbagi
+                </h2>
+                
+                <div class="file-upload-area" id="file-upload-area">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>Unggah File</h3>
+                    <p>Klik atau seret file ke sini untuk berbagi</p>
+                    <p style="font-size: 0.8rem; color: #666; margin-top: 8px;">Maksimal 5MB per file</p>
+                    <input type="file" id="file-input" class="hidden" multiple disabled>
+                </div>
+                
+                <div class="online-users">
+                    <h2 class="section-title">
+                        <i class="fas fa-users"></i>
+                        Pengguna Online
+                    </h2>
+                    <div class="users-list" id="users-list">
+                        <!-- Daftar pengguna online akan muncul di sini -->
+                    </div>
+                </div>
+                
+                <div class="print-section">
+                    <h2 class="section-title">
+                        <i class="fas fa-print"></i>
+                        Cetak Percakapan
+                    </h2>
+                    <div class="print-options">
+                        <button class="print-btn" id="print-chat-btn">
+                            <i class="fas fa-print"></i>
+                            Cetak Seluruh Percakapan
+                        </button>
+                        <button class="print-btn" id="print-last-btn">
+                            <i class="fas fa-file-alt"></i>
+                            Cetak 10 Pesan Terakhir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
--- Enable realtime untuk kedua tabel
-ALTER PUBLICATION supabase_realtime ADD TABLE messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE online_users;
+    <script>
+        // Konfigurasi Supabase
+        const SUPABASE_URL = 'https://dmesetbxhugyoyszpzzeu.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtZXN0YnhodWd5b3lzenB6emV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1NDQ5NzYsImV4cCI6MjA3OTEyMDk3Nn0.lbrW9Q9VsHabPqEmUjJKXJoBCOYwnjv47v1LRPzX91c';
 
--- Buat index untuk performa
-CREATE INDEX idx_messages_created_at ON messages(created_at);
-CREATE INDEX idx_online_users_last_seen ON online_users(last_seen);
+        // Inisialisasi Supabase
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Inisialisasi variabel
+        const chatContainer = document.getElementById('chat-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const fileBtn = document.getElementById('file-btn');
+        const imageBtn = document.getElementById('image-btn');
+        const fileInput = document.getElementById('file-input');
+        const fileUploadArea = document.getElementById('file-upload-area');
+        const emptyState = document.getElementById('empty-state');
+        const printChatBtn = document.getElementById('print-chat-btn');
+        const printLastBtn = document.getElementById('print-last-btn');
+        const userColorElement = document.getElementById('user-color');
+        const userIdElement = document.getElementById('user-id');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const loginModal = document.getElementById('login-modal');
+        const usernameInput = document.getElementById('username-input');
+        const loginBtn = document.getElementById('login-btn');
+        const usersList = document.getElementById('users-list');
+
+        let userId = '';
+        let username = '';
+        let userColor = '';
+        let isConnected = false;
+        let onlineUsers = new Map();
+
+        // Fungsi untuk generate warna unik
+        function getUserColor(userId) {
+            let hash = 0;
+            for (let i = 0; i < userId.length; i++) {
+                hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = hash % 360;
+            return `hsl(${hue}, 70%, 60%)`;
+        }
+
+        // Fungsi login
+        loginBtn.addEventListener('click', async function() {
+            const name = usernameInput.value.trim();
+            if (name) {
+                username = name;
+                userId = 'user_' + Math.random().toString(36).substr(2, 9);
+                userColor = getUserColor(userId);
+                
+                userIdElement.textContent = username;
+                userColorElement.style.backgroundColor = userColor;
+                
+                loginModal.style.display = 'none';
+                enableChat();
+                await connectToSupabase();
+            }
+        });
+
+        // Fungsi untuk mengaktifkan chat setelah login
+        function enableChat() {
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            fileBtn.disabled = false;
+            imageBtn.disabled = false;
+            fileInput.disabled = false;
+            messageInput.focus();
+        }
+
+        // Fungsi untuk terhubung ke Supabase
+        async function connectToSupabase() {
+            try {
+                // Set status online
+                await supabase
+                    .from('online_users')
+                    .upsert({
+                        id: userId,
+                        username: username,
+                        color: userColor,
+                        last_seen: new Date().toISOString(),
+                        is_online: true
+                    });
+
+                // Load pesan yang sudah ada
+                await loadMessages();
+
+                // Subscribe untuk pesan baru
+                const subscription = supabase
+                    .channel('messages')
+                    .on('postgres_changes', 
+                        { 
+                            event: 'INSERT', 
+                            schema: 'public', 
+                            table: 'messages' 
+                        }, 
+                        (payload) => {
+                            const message = payload.new;
+                            if (message.type === 'text') {
+                                displayTextMessage(message.text, message.user_id, message.username, message.created_at, false);
+                            } else if (message.type === 'file') {
+                                displayFileMessage(message, false);
+                            }
+                        }
+                    )
+                    .subscribe();
+
+                // Subscribe untuk update pengguna online
+                const onlineSubscription = supabase
+                    .channel('online_users')
+                    .on('postgres_changes',
+                        {
+                            event: '*',
+                            schema: 'public',
+                            table: 'online_users'
+                        },
+                        async (payload) => {
+                            await updateOnlineUsers();
+                        }
+                    )
+                    .subscribe();
+
+                // Update status koneksi
+                isConnected = true;
+                statusDot.classList.remove('offline');
+                statusText.textContent = 'Terhubung';
+
+                // Update online users
+                await updateOnlineUsers();
+
+                // Update online users setiap 30 detik
+                setInterval(async () => {
+                    await updateOnlineUsers();
+                }, 30000);
+
+            } catch (error) {
+                console.error('Error connecting to Supabase:', error);
+                statusDot.classList.add('offline');
+                statusText.textContent = 'Offline';
+            }
+        }
+
+        // Fungsi untuk update daftar pengguna online
+        async function updateOnlineUsers() {
+            try {
+                const { data: users, error } = await supabase
+                    .from('online_users')
+                    .select('*')
+                    .eq('is_online', true)
+                    .gt('last_seen', new Date(Date.now() - 2 * 60 * 1000).toISOString()); // 2 menit terakhir
+
+                if (error) throw error;
+
+                onlineUsers.clear();
+                usersList.innerHTML = '';
+
+                users.forEach(user => {
+                    onlineUsers.set(user.id, user);
+                    const userBadge = document.createElement('div');
+                    userBadge.className = 'user-badge';
+                    userBadge.innerHTML = `
+                        <div class="user-color" style="background-color: ${user.color}"></div>
+                        <span>${user.username}</span>
+                    `;
+                    usersList.appendChild(userBadge);
+                });
+
+                // Update status sendiri
+                await supabase
+                    .from('online_users')
+                    .update({ last_seen: new Date().toISOString() })
+                    .eq('id', userId);
+
+            } catch (error) {
+                console.error('Error updating online users:', error);
+            }
+        }
+
+        // Fungsi untuk memuat pesan
+        async function loadMessages() {
+            try {
+                const { data: messages, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .order('created_at', { ascending: true })
+                    .limit(100);
+
+                if (error) throw error;
+
+                if (messages.length > 0) {
+                    emptyState.style.display = 'none';
+                    
+                    messages.forEach(message => {
+                        if (message.type === 'text') {
+                            displayTextMessage(message.text, message.user_id, message.username, message.created_at, false);
+                        } else if (message.type === 'file') {
+                            displayFileMessage(message, false);
+                        }
+                    });
+                    
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+
+        // Fungsi untuk menampilkan pesan teks
+        function displayTextMessage(text, senderId, senderName, timestamp, isNew = true) {
+            if (emptyState.style.display !== 'none') {
+                emptyState.style.display = 'none';
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            
+            if (senderId === userId) {
+                messageDiv.classList.add('sent');
+            } else {
+                messageDiv.classList.add('received');
+            }
+            
+            const messageHeader = document.createElement('div');
+            messageHeader.classList.add('message-header');
+            
+            const senderNameSpan = document.createElement('span');
+            senderNameSpan.textContent = senderId === userId ? 'Anda' : senderName;
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.textContent = formatTime(timestamp);
+            
+            messageHeader.appendChild(senderNameSpan);
+            messageHeader.appendChild(timeSpan);
+            messageDiv.appendChild(messageHeader);
+            
+            const messageText = document.createElement('div');
+            messageText.textContent = text;
+            messageDiv.appendChild(messageText);
+            
+            chatContainer.appendChild(messageDiv);
+            
+            if (isNew) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+
+        // Fungsi untuk menampilkan pesan file
+        function displayFileMessage(message, isNew = true) {
+            if (emptyState.style.display !== 'none') {
+                emptyState.style.display = 'none';
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            
+            if (message.user_id === userId) {
+                messageDiv.classList.add('sent');
+            } else {
+                messageDiv.classList.add('received');
+            }
+            
+            const messageHeader = document.createElement('div');
+            messageHeader.classList.add('message-header');
+            
+            const senderNameSpan = document.createElement('span');
+            senderNameSpan.textContent = message.user_id === userId ? 'Anda' : message.username;
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.textContent = formatTime(message.created_at);
+            
+            messageHeader.appendChild(senderNameSpan);
+            messageHeader.appendChild(timeSpan);
+            messageDiv.appendChild(messageHeader);
+            
+            const fileMessageDiv = document.createElement('div');
+            fileMessageDiv.classList.add('file-message');
+            
+            const fileInfoDiv = document.createElement('div');
+            fileInfoDiv.classList.add('file-info');
+            
+            const fileIcon = document.createElement('i');
+            fileIcon.classList.add('file-icon');
+            
+            if (message.file_type.startsWith('image/')) {
+                fileIcon.classList.add('fas', 'fa-file-image');
+            } else if (message.file_type.startsWith('video/')) {
+                fileIcon.classList.add('fas', 'fa-file-video');
+            } else if (message.file_type.startsWith('audio/')) {
+                fileIcon.classList.add('fas', 'fa-file-audio');
+            } else if (message.file_type.includes('pdf')) {
+                fileIcon.classList.add('fas', 'fa-file-pdf');
+            } else if (message.file_type.includes('word') || message.file_type.includes('document')) {
+                fileIcon.classList.add('fas', 'fa-file-word');
+            } else if (message.file_type.includes('excel') || message.file_type.includes('spreadsheet')) {
+                fileIcon.classList.add('fas', 'fa-file-excel');
+            } else {
+                fileIcon.classList.add('fas', 'fa-file');
+            }
+            
+            const fileNameSpan = document.createElement('span');
+            fileNameSpan.textContent = message.file_name;
+            
+            fileInfoDiv.appendChild(fileIcon);
+            fileInfoDiv.appendChild(fileNameSpan);
+            fileMessageDiv.appendChild(fileInfoDiv);
+            
+            // Tampilkan preview untuk gambar
+            if (message.file_type.startsWith('image/')) {
+                const imgPreview = document.createElement('img');
+                imgPreview.classList.add('file-preview');
+                imgPreview.src = message.file_url || message.file_data;
+                imgPreview.alt = message.file_name;
+                fileMessageDiv.appendChild(imgPreview);
+            }
+            
+            const fileActionsDiv = document.createElement('div');
+            fileActionsDiv.classList.add('file-actions');
+            
+            const downloadBtn = document.createElement('button');
+            downloadBtn.classList.add('btn', 'btn-download');
+            downloadBtn.innerHTML = '<i class="fas fa-download"></i> Unduh';
+            downloadBtn.onclick = function() {
+                downloadFile(message.file_url || message.file_data, message.file_name, message.file_type);
+            };
+            
+            const printBtn = document.createElement('button');
+            printBtn.classList.add('btn', 'btn-print');
+            printBtn.innerHTML = '<i class="fas fa-print"></i> Cetak';
+            printBtn.onclick = function() {
+                printFile(message.file_url || message.file_data, message.file_type, message.file_name);
+            };
+            
+            fileActionsDiv.appendChild(downloadBtn);
+            
+            if (message.file_type.startsWith('image/') || message.file_type.includes('pdf') || message.file_type.includes('text/plain')) {
+                fileActionsDiv.appendChild(printBtn);
+            }
+            
+            fileMessageDiv.appendChild(fileActionsDiv);
+            messageDiv.appendChild(fileMessageDiv);
+            
+            chatContainer.appendChild(messageDiv);
+            
+            if (isNew) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+
+        // Fungsi untuk mengunduh file
+        function downloadFile(fileData, fileName, fileType) {
+            const link = document.createElement('a');
+            link.href = fileData;
+            link.download = fileName;
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Fungsi untuk mencetak file
+        function printFile(fileData, fileType, fileName) {
+            if (fileType.startsWith('image/')) {
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>Cetak: ${fileName}</title>
+                    </head>
+                    <body style="display: flex; justify-content: center; align-items: center; height: 100vh;">
+                        <img src="${fileData}" style="max-width: 100%; max-height: 100%;">
+                    </body>
+                    </html>
+                `);
+                printWindow.document.close();
+                printWindow.print();
+            } else if (fileType.includes('pdf')) {
+                const printWindow = window.open(fileData, '_blank');
+                printWindow.onload = function() {
+                    printWindow.print();
+                };
+            } else {
+                alert('Tipe file ini tidak dapat dicetak langsung. Silakan unduh dan buka dengan aplikasi yang sesuai.');
+            }
+        }
+
+        // Fungsi untuk memformat waktu
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('id-ID', { 
+                hour: '2-digit', 
+                minute: '2-digit'
+            });
+        }
+
+        // Fungsi untuk mengirim pesan teks
+        async function sendTextMessage() {
+            const text = messageInput.value.trim();
+            
+            if (text === '') {
+                return;
+            }
+            
+            try {
+                const { error } = await supabase
+                    .from('messages')
+                    .insert({
+                        type: 'text',
+                        text: text,
+                        user_id: userId,
+                        username: username,
+                        created_at: new Date().toISOString()
+                    });
+
+                if (error) throw error;
+                
+                messageInput.value = '';
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Error mengirim pesan: ' + error.message);
+            }
+        }
+
+        // Fungsi untuk mengupload file ke Supabase Storage
+        async function uploadFile(file) {
+            try {
+                // Generate unique filename
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${userId}_${Date.now()}.${fileExt}`;
+                
+                // Upload file to storage
+                const { data, error } = await supabase.storage
+                    .from('chat-files')
+                    .upload(fileName, file);
+                
+                if (error) throw error;
+                
+                // Get public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('chat-files')
+                    .getPublicUrl(fileName);
+                
+                return {
+                    file_name: file.name,
+                    file_type: file.type,
+                    file_url: publicUrl,
+                    storage_path: data.path
+                };
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                throw error;
+            }
+        }
+
+        // Fungsi untuk mengirim file
+        async function sendFileMessage(file) {
+            try {
+                // Tampilkan status upload
+                const tempMessageDiv = document.createElement('div');
+                tempMessageDiv.classList.add('message', 'sent');
+                tempMessageDiv.innerHTML = `
+                    <div class="message-header">
+                        <span>Anda</span>
+                        <span>${formatTime(new Date())}</span>
+                    </div>
+                    <div>Mengupload ${file.name}...</div>
+                    <div class="progress-bar">
+                        <div class="progress" id="upload-progress"></div>
+                    </div>
+                    <div class="upload-status" id="upload-status">0%</div>
+                `;
+                chatContainer.appendChild(tempMessageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+                
+                // Upload file
+                const fileData = await uploadFile(file);
+                
+                // Simpan ke database
+                const { error } = await supabase
+                    .from('messages')
+                    .insert({
+                        type: 'file',
+                        file_name: fileData.file_name,
+                        file_type: fileData.file_type,
+                        file_url: fileData.file_url,
+                        storage_path: fileData.storage_path,
+                        user_id: userId,
+                        username: username,
+                        created_at: new Date().toISOString()
+                    });
+
+                if (error) throw error;
+                
+                // Hapus pesan sementara
+                tempMessageDiv.remove();
+                
+            } catch (error) {
+                console.error('Error sending file:', error);
+                alert('Error mengirim file: ' + error.message);
+            }
+        }
+
+        // Event listener untuk tombol kirim
+        sendButton.addEventListener('click', sendTextMessage);
+        
+        // Event listener untuk menekan Enter di input
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendTextMessage();
+            }
+        });
+        
+        // Event listener untuk tombol file
+        fileBtn.addEventListener('click', function() {
+            fileInput.click();
+        });
+        
+        // Event listener untuk tombol gambar
+        imageBtn.addEventListener('click', function() {
+            fileInput.accept = 'image/*';
+            fileInput.click();
+        });
+        
+        // Event listener untuk input file
+        fileInput.addEventListener('change', function(e) {
+            const files = e.target.files;
+            for (let i = 0; i < files.length; i++) {
+                // Cek ukuran file (maksimal 5MB)
+                if (files[i].size > 5 * 1024 * 1024) {
+                    alert('File terlalu besar. Maksimal 5MB per file.');
+                    continue;
+                }
+                sendFileMessage(files[i]);
+            }
+            fileInput.value = '';
+        });
+        
+        // Event listener untuk area unggah file
+        fileUploadArea.addEventListener('click', function() {
+            fileInput.accept = '*/*';
+            fileInput.click();
+        });
+        
+        // Event listener untuk drag and drop
+        fileUploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            fileUploadArea.style.backgroundColor = 'rgba(79, 172, 254, 0.2)';
+        });
+        
+        fileUploadArea.addEventListener('dragleave', function() {
+            fileUploadArea.style.backgroundColor = '';
+        });
+        
+        fileUploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            fileUploadArea.style.backgroundColor = '';
+            
+            const files = e.dataTransfer.files;
+            for (let i = 0; i < files.length; i++) {
+                // Cek ukuran file (maksimal 5MB)
+                if (files[i].size > 5 * 1024 * 1024) {
+                    alert('File terlalu besar. Maksimal 5MB per file.');
+                    continue;
+                }
+                sendFileMessage(files[i]);
+            }
+        });
+
+        // Event listener untuk tombol cetak
+        printChatBtn.addEventListener('click', function() {
+            printChat('all');
+        });
+        
+        printLastBtn.addEventListener('click', function() {
+            printChat('last10');
+        });
+
+        // Fungsi untuk mencetak percakapan
+        function printChat(type) {
+            const messages = Array.from(document.querySelectorAll('.message'));
+            let messagesToPrint = messages;
+            
+            if (type === 'last10') {
+                messagesToPrint = messages.slice(-10);
+            }
+            
+            const printWindow = window.open('', '_blank');
+            let printContent = `
+                <html>
+                <head>
+                    <title>Cetak Percakapan Chat</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+                        .message { margin-bottom: 15px; padding: 10px; border-radius: 8px; }
+                        .sent { background-color: #e3f2fd; text-align: right; }
+                        .received { background-color: #f5f5f5; }
+                        .message-header { font-size: 0.8rem; color: #666; margin-bottom: 5px; }
+                        .file-message { border: 1px dashed #ccc; padding: 8px; margin-top: 5px; }
+                        .file-info { display: flex; align-items: center; gap: 8px; }
+                        @media print {
+                            body { padding: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>Percakapan Chat</h1>
+                    <p>Dicetak pada: ${new Date().toLocaleString('id-ID')}</p>
+                    <div class="messages">
+            `;
+            
+            messagesToPrint.forEach(message => {
+                const isSent = message.classList.contains('sent');
+                const senderName = message.querySelector('.message-header span:first-child').textContent;
+                const time = message.querySelector('.message-header span:last-child').textContent;
+                const messageClass = isSent ? 'sent' : 'received';
+                
+                printContent += `
+                    <div class="message ${messageClass}">
+                        <div class="message-header">
+                            <span>${senderName}</span> - <span>${time}</span>
+                        </div>
+                `;
+                
+                const fileMessage = message.querySelector('.file-message');
+                if (fileMessage) {
+                    const fileName = fileMessage.querySelector('.file-info span').textContent;
+                    printContent += `
+                        <div class="file-message">
+                            <div class="file-info">
+                                <i class="file-icon">📎</i>
+                                <span>${fileName}</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const text = message.querySelector('div:last-child').textContent;
+                    printContent += `<div>${text}</div>`;
+                }
+                
+                printContent += `</div>`;
+            });
+            
+            printContent += `
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.print();
+        }
+
+        // Auto focus pada input username
+        usernameInput.focus();
+        usernameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loginBtn.click();
+            }
+        });
+
+        // Cleanup saat window/tab ditutup
+        window.addEventListener('beforeunload', async function() {
+            if (userId) {
+                await supabase
+                    .from('online_users')
+                    .update({ is_online: false })
+                    .eq('id', userId);
+            }
+        });
+
+        // Initialize Supabase storage bucket
+        async function initializeStorage() {
+            try {
+                // Cek apakah bucket sudah ada
+                const { data: buckets, error } = await supabase.storage.listBuckets();
+                if (error) throw error;
+                
+                const bucketExists = buckets.some(bucket => bucket.name === 'chat-files');
+                
+                if (!bucketExists) {
+                    console.log('Bucket chat-files tidak ditemukan. Silakan buat bucket di dashboard Supabase.');
+                }
+            } catch (error) {
+                console.error('Error initializing storage:', error);
+            }
+        }
+
+        // Panggil fungsi initialize saat load
+        initializeStorage();
+    </script>
+</body>
+</html>
